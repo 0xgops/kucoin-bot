@@ -1,0 +1,22 @@
+{
+  "BTC-USDT": "bitcoin",
+  "ETH-USDT": "ethereum",
+  "SOL-USDT": "solana",
+  "XRP-USDT": "ripple",
+  "ADA-USDT": "cardano",
+  "DOGE-USDT": "dogecoin",
+  "TRX-USDT": "tron",
+  "DOT-USDT": "polkadot",
+  "MATIC-USDT": "matic-network",
+  "LTC-USDT": "litecoin",
+  "AVAX-USDT": "avalanche-2",
+  "BCH-USDT": "bitcoin-cash",
+  "LINK-USDT": "chainlink",
+  "PEPE-USDT": "pepe",
+  "TURBO-USDT": "turbo",
+  "SUI-USDT": "sui",
+  "OP-USDT": "optimism",
+  "ARB-USDT": "arbitrum",
+  "RNDR-USDT": "render-token",
+  "INJ-USDT": "injective-protocol"
+}

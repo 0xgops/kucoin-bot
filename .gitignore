@@ -1,0 +1,31 @@
+# ⛔ Secrets & Keys
+.env
+*.env
+
+# ✅ Node
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+package-lock.json
+
+# 🔍 Logs & Cache
+logs/
+*.log
+*.csv
+
+# 🔁 OS/System files
+.DS_Store
+Thumbs.db
+
+# 🧠 Bot State
+holdings-*.json
+trades-*.log
+
+# ⏳ Temporary builds
+.temp/
+*.tmp
+
+# 🛠 Misc
+*.bak
+*.swp
