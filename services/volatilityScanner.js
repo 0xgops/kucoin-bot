@@ -1,28 +1,28 @@
 const axios = require('axios');
 
-async function fetchVolatilityTopMovers(limit = 5) {
-  const url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=volume_desc&per_page=50&page=1&price_change_percentage=24h';
+// ⏱ How far back to scan (30 mins = 30 candles of 1m)
+const CANDLE_INTERVAL = 1; // 1-minute candles
+const LOOKBACK_MINUTES = 30;
+
+async function getVolatility(symbol) {
+  const end = Date.now();
+  const start = end - LOOKBACK_MINUTES * 60 * 1000;
+
+  const url = `https://api.kucoin.com/api/v1/market/candles?type=${CANDLE_INTERVAL}min&symbol=${symbol}&startAt=${Math.floor(start / 1000)}&endAt=${Math.floor(end / 1000)}`;
 
   try {
-    const response = await axios.get(url);
-    const coins = response.data;
+    const { data } = await axios.get(url);
+    if (!data?.data?.length) return 0;
 
-    // Sort coins by absolute % change (volatility)
-    const sorted = coins
-      .map(c => ({
-        name: c.name,
-        symbol: c.symbol,
-        id: c.id,
-        price: c.current_price,
-        change24h: c.price_change_percentage_24h
-      }))
-      .sort((a, b) => Math.abs(b.change24h) - Math.abs(a.change24h));
+    const closes = data.data.map(candle => parseFloat(candle[2])); // candle[2] = close price
+    const min = Math.min(...closes);
+    const max = Math.max(...closes);
 
-    return sorted.slice(0, limit);
-  } catch (err) {
-    console.error('Error fetching volatility data:', err.message);
-    return [];
+    return ((max - min) / min) * 100; // % range volatility
+  } catch (e) {
+    console.error(`❌ Error fetching volatility for ${symbol}:`, e.message);
+    return 0;
   }
 }
 
-module.exports = { fetchVolatilityTopMovers };
+module.exports = { getVolatility };

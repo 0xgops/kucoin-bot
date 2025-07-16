@@ -8,32 +8,42 @@ const inputRSI = {
 
 let lastRSI = null;
 
+function updateHistory(price) {
+  inputRSI.values.push(price);
+  if (inputRSI.values.length > inputRSI.period + 1) {
+    inputRSI.values.shift();
+  }
+}
+
+function getRSI() {
+  if (inputRSI.values.length < inputRSI.period) return null;
+  const result = RSI.calculate(inputRSI);
+  lastRSI = result[result.length - 1];
+  return lastRSI;
+}
+
 function getLatestRSI() {
   return lastRSI;
 }
 
 function evaluateStrategy(price) {
-  inputRSI.values.push(price);
-  const rsiValues = RSI.calculate(inputRSI);
+  updateHistory(price);
 
-  if (rsiValues.length > 0) {
-    lastRSI = rsiValues[rsiValues.length - 1];
-  }
+  const rsi = getRSI();
+  if (!rsi) return 'HOLD';
 
   const RSI_BUY = parseFloat(process.env.RSI_BUY) || 45;
   const RSI_SELL = parseFloat(process.env.RSI_SELL) || 55;
 
   // 🧪 Debug printout
-  if (lastRSI) {
-    console.log(
-      `${chalk.cyan(`[${process.env.BOT_NAME}]`)} ` +
-      `Price: ${chalk.yellow(`$${price.toFixed(6)}`)} | ` +
-      `RSI: ${chalk.magenta(`${lastRSI.toFixed(2)}`)}`
-    );
-  }
+  console.log(
+    `${chalk.cyan(`[${process.env.BOT_NAME}]`)} ` +
+    `Price: ${chalk.yellow(`$${price.toFixed(6)}`)} | ` +
+    `RSI: ${chalk.magenta(`${rsi.toFixed(2)}`)}`
+  );
 
-  if (lastRSI < RSI_BUY) return 'BUY';
-  if (lastRSI > RSI_SELL) return 'SELL';
+  if (rsi < RSI_BUY) return 'BUY';
+  if (rsi > RSI_SELL) return 'SELL';
   return 'HOLD';
 }
 

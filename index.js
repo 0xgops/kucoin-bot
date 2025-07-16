@@ -1,3 +1,4 @@
+const { getVolatility } = require('./services/volatilityScanner');
 const fs = require('fs');
 const chalk = require('chalk').default;
 
@@ -70,6 +71,11 @@ async function main() {
   if (['BUY', 'SELL'].includes(signal)) {
     await sendDiscordMessage(`[${BOT_NAME}] ${signal} @ $${price} ${rsiString}`);
   }
+
+  // 💡 Update volatility filter before simulating trade
+const symbol = process.env.SYMBOL; // <-- Add this line
+const volatility = await getVolatility(symbol); // 30-min window
+holdings.volatility = volatility;
 
   // 🧠 Simulate trade + save state
   holdings = simulateTrade(signal, price, holdings);

@@ -29,3 +29,6 @@ trades-*.log
 # 🛠 Misc
 *.bak
 *.swp
+# Ignore .env files everywhere
+.env
+bots/**/.env
