@@ -31,4 +31,4 @@ trades-*.log
 *.swp
 # Ignore .env files everywhere
 .env
-bots/**/.env
+bots/**/.envnode_modules

@@ -26,4 +26,13 @@ function getProfit() {
   return loadProfit();
 }
 
-module.exports = { addProfit, getProfit };
+function resetProfit() {
+  saveProfit(0);
+  console.log(`🔁 Profit reset for bot [${BOT_NAME}]`);
+}
+
+module.exports = {
+  addProfit,
+  getProfit,
+  resetProfit
+};
