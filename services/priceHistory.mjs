@@ -1,6 +1,7 @@
-const axios = require('axios');
+// services/priceHistory.js
+import axios from 'axios';
 
-async function fetchLastHourPrices(symbol = 'BTC-USDT') {
+export async function fetchLastHourPrices(symbol = 'BTC-USDT') {
   try {
     const res = await axios.get(`https://api.kucoin.com/api/v1/market/candles`, {
       params: {
@@ -16,11 +17,9 @@ async function fetchLastHourPrices(symbol = 'BTC-USDT') {
       .slice(-60) // last 60 minutes
       .map(candle => parseFloat(candle[2])) // close price is at index 2
 
-    return closingPrices.reverse(); // reverse to get oldest → newest
+    return closingPrices.reverse(); // oldest → newest
   } catch (err) {
     console.error('❌ Failed to fetch historical prices from KuCoin:', err.message);
     return [];
   }
 }
-
-module.exports = { fetchLastHourPrices };

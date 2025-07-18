@@ -1,37 +1,39 @@
-// services/trade.js
-const axios = require('axios');
-const { addProfit } = require('../utils/profitTracker');
-const {
+// services/trade.mjs
+import axios from 'axios';
+import chalk from 'chalk';
+import { addProfit } from '../utils/profitTracker.mjs';
+import {
   FEE_RATE,
   STOP_LOSS_PERCENT,
   TAKE_PROFIT_PERCENT,
   MAX_TRADE_AMOUNT,
   RISK_PERCENT,
   REBUY_COOLDOWN_MS
-} = require('../config/constants');
+} from '../config/constants.mjs';
 
 function simulateTrade(signal, price, originalHoldings) {
   const now = Date.now();
   const holdings = { ...originalHoldings }; // Clone to avoid mutation
   const MIN_VOLATILITY = 1.0;
   const tradeAmount = Math.min(holdings.balanceUSD * RISK_PERCENT, MAX_TRADE_AMOUNT);
+  const symbol = process.env.BOT_NAME || '???';
+  const label = chalk.cyan(`[${symbol}]`);
 
-  console.log(`🔍 simulateTrade ENTRY for [${process.env.BOT_NAME}] | signal: ${signal}, price: $${price} | inPosition: ${!!holdings.position}`);
+  console.log(`🔍 simulateTrade ENTRY for [${symbol}] | signal: ${signal}, price: $${price} | inPosition: ${!!holdings.position}`);
 
   // --- 🧠 SELL Logic ---
   if (signal === 'SELL') {
-    console.log(`🛠 simulateTrade() for [${process.env.BOT_NAME}] | signal: ${signal}, price: $${price}`);
+    console.log(`🛠 simulateTrade() for [${symbol}] | signal: ${signal}, price: $${price}`);
     if (!holdings.position) {
-      console.log(`⚠️ SELL signal received, but no position held. Skipping.`);
+      console.log(`${label} ⚠️ SELL signal received, but no position held. Skipping.`);
       return holdings;
     }
 
     const { entryPrice, amount } = holdings.position;
     const changePercent = ((price - entryPrice) / entryPrice) * 100;
 
-    // Guard: Ignore weak SELLs
     if (changePercent < TAKE_PROFIT_PERCENT && changePercent > -STOP_LOSS_PERCENT) {
-      console.log(`⛔ Ignoring SELL — profit (${changePercent.toFixed(2)}%) below threshold.`);
+      console.log(`${label} ⛔ Ignoring SELL — profit (${changePercent.toFixed(2)}%) below threshold.`);
       return holdings;
     }
 
@@ -51,7 +53,7 @@ function simulateTrade(signal, price, originalHoldings) {
     if (DISCORD_WEBHOOK) {
       const content = `${emoji} SELLING ${amount.toFixed(6)} units at $${price.toFixed(6)} | P/L: $${profit.toFixed(2)}`;
       axios.post(DISCORD_WEBHOOK, { content }).catch(e => {
-        console.warn('⚠️ Failed to send Discord alert:', e.message);
+        console.warn(`${label} ⚠️ Failed to send Discord alert: ${e.message}`);
       });
     }
 
@@ -63,14 +65,14 @@ function simulateTrade(signal, price, originalHoldings) {
     const volatility = holdings.volatility || 0;
 
     if (volatility < MIN_VOLATILITY) {
-      console.log(`🧊 Skipping BUY — too calm (volatility = ${volatility.toFixed(2)}%)`);
+      console.log(`${label} 🧊 Skipping BUY — too calm (volatility = ${volatility.toFixed(2)}%)`);
       holdings._skipReason = 'CALM';
       return holdings;
     }
 
     if (holdings.lastSellTime && now - holdings.lastSellTime < REBUY_COOLDOWN_MS) {
       const secondsLeft = ((REBUY_COOLDOWN_MS - (now - holdings.lastSellTime)) / 1000).toFixed(1);
-      console.log(`⏳ Skipping BUY — cooldown (${secondsLeft}s left)`);
+      console.log(`${label} ⏳ Skipping BUY — cooldown (${secondsLeft}s left)`);
       holdings._skipReason = 'COOLDOWN';
       return holdings;
     }
@@ -86,10 +88,10 @@ function simulateTrade(signal, price, originalHoldings) {
     };
 
     console.log(`💸 KuCoin fee on BUY: ${feePaid.toFixed(6)} units`);
-    console.log(`[${process.env.BOT_NAME}] 🟢 BUYING at $${price.toFixed(6)} | Holding ${quantity.toFixed(6)} units...`);
+    console.log(`${label} 🟢 BUYING at $${price.toFixed(6)} | Holding ${quantity.toFixed(6)} units...`);
   }
 
   return holdings;
 }
 
-module.exports = { simulateTrade };
+export { simulateTrade };

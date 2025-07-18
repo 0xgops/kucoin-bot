@@ -1,13 +1,17 @@
-// index.js
+import 'dotenv/config';
+import chalk from 'chalk';
+import fs from 'fs/promises';
+import path from 'path';
 
-const fs = require('fs').promises;
-const chalk = require('chalk').default;
-const { fetchPrice } = require('./services/kucoin');
-const { fetchLastHourPrices } = require('./services/priceHistory');
-const { simulateTrade } = require('./services/trade');
-const { getVolatility } = require('./services/volatilityScanner');
-const { isVolatileEnough, seedHistory } = require('./utils/volatilityFilter');
-const { getProfit } = require('./utils/profitTracker');
+import { fetchPrice } from './services/kucoin.mjs';
+import { fetchLastHourPrices } from './services/priceHistory.mjs';
+import { simulateTrade } from './services/trade.mjs';
+import { getVolatility } from './services/volatilityScanner.mjs';
+import { isVolatileEnough, seedHistory } from './utils/volatilityFilter.mjs';
+import { getProfit } from './utils/profitTracker.mjs';
+
+import * as rsiStrategy from './logic/strategy-rsi.mjs';
+import * as smaStrategy from './logic/strategy.mjs';
 
 // 🧠 Config pulled from ENV
 const SYMBOL = process.env.SYMBOL || 'BTC-USDT';
@@ -19,8 +23,7 @@ const SKIP_VOLATILITY = process.env.SKIP_VOLATILITY === 'true';
 const HOLDINGS_PATH = `./logs/holdings-${BOT_NAME}.json`;
 const TRADES_LOG_PATH = `./logs/trades-${BOT_NAME}.log`;
 
-// 🧠 Load strategy dynamically
-const strategyModule = STRATEGY === 'rsi' ? require('./logic/strategy-rsi') : require('./logic/strategy');
+const strategyModule = STRATEGY === 'rsi' ? rsiStrategy : smaStrategy;
 const evaluateStrategy = strategyModule.evaluateStrategy;
 const getLatestRSI = strategyModule.getLatestRSI || (() => null);
 
@@ -39,11 +42,12 @@ async function loadHoldings() {
     if (await fs.access(HOLDINGS_PATH).then(() => true).catch(() => false)) {
       const raw = await fs.readFile(HOLDINGS_PATH, 'utf8');
       holdings = { ...holdings, ...JSON.parse(raw) };
-      // 🌬 Validate and fix broken position state
-if (holdings.position && !holdings.position.entryPrice) {
-  holdings.position = null;
-  console.log(chalk.yellow('⚠️ Cleared invalid position state.'));
-}
+
+      if (holdings.position && !holdings.position.entryPrice) {
+        holdings.position = null;
+        console.log(chalk.yellow('⚠️ Cleared invalid position state.'));
+      }
+
       console.log(chalk.green(`🧾 Loaded holdings: $${holdings.balanceUSD.toFixed(2)}`));
     } else {
       console.log(chalk.yellow(`🧾 No holdings file found, using defaults.`));
@@ -76,38 +80,32 @@ async function logTrade(signal, price, rsi) {
 // 🔁 Main trading loop
 async function main() {
   try {
-    // Fetch price
     const price = await fetchPrice(SYMBOL);
     if (!price || isNaN(price)) {
       console.log(chalk.red(`⚠️ Invalid price: ${price} — skipping.`));
       return;
     }
 
-    // Update volatility
-    const volatility = await getVolatility(SYMBOL); // 30-min window
+    const volatility = await getVolatility(SYMBOL);
     holdings.volatility = volatility;
 
-    // Check volatility
     if (!SKIP_VOLATILITY && !isVolatileEnough(price, VOLATILITY_THRESHOLD)) {
       console.log(chalk.gray(`[${BOT_NAME}] Market too flat (volatility: ${volatility.toFixed(2)}%), skipping.`));
       return;
     }
 
-    // Evaluate strategy
     const signal = evaluateStrategy(price);
     const rsi = getLatestRSI();
     const timestamp = new Date().toISOString();
-    const rsiString = rsi ? chalk.magenta(`(RSI: ${rsi.toFixed(2)})`): '';
+    const rsiString = rsi ? chalk.magenta(`(RSI: ${rsi.toFixed(2)})`) : '';
     const inPosition = holdings.position && holdings.position.entryPrice ? '📦 IN TRADE' : '💤 OUT';
     const colorSignal = signal === 'BUY' ? chalk.green.bold(signal)
                       : signal === 'SELL' ? chalk.red.bold(signal)
                       : chalk.gray(signal);
 
-    // Log status
     console.log(`${chalk.blue(`[${timestamp}]`)} [${BOT_NAME}] $${price.toFixed(6)} | Signal: ${colorSignal} ${rsiString} ${chalk.gray(inPosition)}`);
     console.log(`💰 Total Profit: $${getProfit().toFixed(2)} | Volatility: ${volatility.toFixed(2)}%${holdings._skipReason ? ` | Skip: ${holdings._skipReason}` : ''}\n`);
 
-    // Simulate trade and save state
     if (['BUY', 'SELL'].includes(signal)) {
       console.log(`🔍 Pre-trade: ${holdings.position && holdings.position.entryPrice ? 'IN TRADE' : 'OUT'}`);
       holdings = simulateTrade(signal, price, holdings);
@@ -129,6 +127,6 @@ async function main() {
     setInterval(main, INTERVAL);
   } catch (error) {
     console.error(chalk.red(`⚠️ Failed to initialize bot: ${error.message}`));
-    process.exit(1); // Exit on initialization failure
+    process.exit(1);
   }
 })();

@@ -1,18 +1,16 @@
-// rotateVolatileCoins.js
-require('dotenv').config();
-const fs = require('fs');
-const path = require('path');
-const axios = require('axios');
-const { spawn } = require('child_process');
-const { getVolatility } = require('./services/volatilityScanner');
+import 'dotenv/config';
+import fs from 'fs';
+import path from 'path';
+import axios from 'axios';
+import { spawn } from 'child_process';
+import { getVolatility } from './services/volatilityScanner.mjs';
 
 const BOT_FOLDER = './bots';
-const TOP_N = 3; // Number of bots to rotate/update
+const TOP_N = 3;
 const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK;
-const idMap = require('./idMap-kucoin-expanded.json');
 
-// 🔥 STEP 1: Fetch top volatile symbols (rolling 30-min window)
-async function fetchTopVolatile() {
+// 🔥 STEP 1: Fetch top volatile symbols
+async function fetchTopVolatile(idMap) {
   const volatilities = [];
 
   for (const symbol of Object.keys(idMap)) {
@@ -63,7 +61,7 @@ function updateBotEnv(botIndex, symbol, coingeckoId) {
 // 🚀 STEP 3: Relaunch all bots
 function relaunchBots() {
   console.log('\n♻️ Relaunching bots...\n');
-  const proc = spawn('node', ['launchBots.js'], {
+  const proc = spawn('node', ['launchBots.mjs'], {
     stdio: 'inherit',
     env: process.env,
   });
@@ -91,7 +89,10 @@ async function sendDiscordSummary(coins) {
 
 // 🧠 MAIN
 (async () => {
-  const topCoins = await fetchTopVolatile();
+  const raw = await fs.promises.readFile('./idMap-kucoin-expanded.json', 'utf-8');
+  const idMap = JSON.parse(raw);
+
+  const topCoins = await fetchTopVolatile(idMap);
   if (topCoins.length === 0) {
     console.log('⚠️ No coins fetched. Skipping rotation.');
     return;

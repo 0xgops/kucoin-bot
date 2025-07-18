@@ -1,4 +1,5 @@
-const chalk = require('chalk').default;
+// logic/strategy.js
+import chalk from 'chalk';
 
 let prices = [];
 
@@ -35,7 +36,7 @@ function getMomentum(window = 3) {
   return recent[recent.length - 1] - recent[0];
 }
 
-function evaluateStrategy(price) {
+export function evaluateStrategy(price) {
   updateHistory(price);
   const rsi = getRSI();
   const sma = getSMA();
@@ -62,8 +63,6 @@ function evaluateStrategy(price) {
   return 'HOLD';
 }
 
-function getLatestRSI() {
+export function getLatestRSI() {
   return getRSI();
 }
-
-module.exports = { evaluateStrategy, getLatestRSI };

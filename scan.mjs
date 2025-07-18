@@ -1,7 +1,12 @@
-const fs = require('fs');
-const path = require('path');
-const { fetchVolatilityTopMovers } = require('./services/volatilityScanner');
-const { sendDiscordMessage } = require('./config/discord');
+// scan.js
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { fetchVolatilityTopMovers } from './services/volatilityScanner.js';
+import { sendDiscordMessage } from './config/discord.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const ENV_PATH = path.join(__dirname, '.env');
 

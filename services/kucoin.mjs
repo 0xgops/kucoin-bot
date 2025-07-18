@@ -1,7 +1,9 @@
-const axios = require('axios');
-require('dotenv').config();
+// services/kucoin.js
+import axios from 'axios';
+import dotenv from 'dotenv';
+dotenv.config();
 
-async function fetchPrice(symbol = 'BTC-USDT') {
+export async function fetchPrice(symbol = 'BTC-USDT') {
   try {
     const res = await axios.get(`https://api.kucoin.com/api/v1/market/orderbook/level1`, {
       params: { symbol }
@@ -14,5 +16,3 @@ async function fetchPrice(symbol = 'BTC-USDT') {
     return null;
   }
 }
-
-module.exports = { fetchPrice };

@@ -1,8 +1,10 @@
-const fs = require('fs');
-const path = require('path');
+// utils/profitTracker.js
+import fs from 'fs';
+import path from 'path';
 
 const BOT_NAME = process.env.BOT_NAME || 'default';
-const profitPath = path.join(__dirname, `../logs/profit-${BOT_NAME}.json`);
+const __dirname = path.resolve(); // Required for top-level path construction
+const profitPath = path.join(__dirname, 'logs', `profit-${BOT_NAME}.json`);
 
 function loadProfit() {
   if (fs.existsSync(profitPath)) {
@@ -16,23 +18,17 @@ function saveProfit(value) {
   fs.writeFileSync(profitPath, value.toFixed(2));
 }
 
-function addProfit(amount) {
+export function addProfit(amount) {
   const current = loadProfit();
   const updated = current + amount;
   saveProfit(updated);
 }
 
-function getProfit() {
+export function getProfit() {
   return loadProfit();
 }
 
-function resetProfit() {
+export function resetProfit() {
   saveProfit(0);
   console.log(`🔁 Profit reset for bot [${BOT_NAME}]`);
 }
-
-module.exports = {
-  addProfit,
-  getProfit,
-  resetProfit
-};

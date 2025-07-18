@@ -1,16 +1,14 @@
-const { spawn } = require('child_process');
+// launchBots.mjs
+import { spawn } from 'child_process';
+import fs from 'fs';
+import path from 'path';
 
 const pairs = ['PEPE-USDT', 'SUI-USDT', 'TURBO-USDT']; // Replace with your desired symbols
-
-const fs = require('fs');
-const path = require('path');
-
-// Read env files from bots folder
-const botCount = 3;
+const botCount = pairs.length;
 const delays = [0, 3000, 6000]; // Staggered start
 
 for (let i = 0; i < botCount; i++) {
-  const botDir = path.join(__dirname, 'bots', `bot${i + 1}`);
+  const botDir = path.join('./bots', `bot${i + 1}`);
   const envPath = path.join(botDir, '.env');
 
   if (!fs.existsSync(envPath)) {
@@ -31,7 +29,7 @@ for (let i = 0; i < botCount; i++) {
   const delay = delays[i] || 0;
   setTimeout(() => {
     console.log(`🚀 Launching bot ${i + 1} → ${env.SYMBOL}`);
-    const child = spawn('node', ['index.js'], {
+    const child = spawn('node', ['index.mjs'], {
       env: { ...process.env, ...env },
       stdio: 'inherit',
     });
