@@ -1,20 +1,20 @@
-// services/trade.mjs
-import axios from 'axios';
 import chalk from 'chalk';
+import axios from 'axios';
 import { addProfit } from '../utils/profitTracker.mjs';
-import {
-  FEE_RATE,
-  STOP_LOSS_PERCENT,
-  TAKE_PROFIT_PERCENT,
-  MAX_TRADE_AMOUNT,
-  RISK_PERCENT,
-  REBUY_COOLDOWN_MS
-} from '../config/constants.mjs';
+import { FEE_RATE } from '../config/constants.mjs';
 
 function simulateTrade(signal, price, originalHoldings) {
   const now = Date.now();
   const holdings = { ...originalHoldings }; // Clone to avoid mutation
   const MIN_VOLATILITY = 1.0;
+
+  // ✅ Safe fallback defaults if env is missing
+  const RISK_PERCENT = parseFloat(process.env.RISK_PERCENT) || 0.01;
+  const MAX_TRADE_AMOUNT = parseFloat(process.env.MAX_TRADE_AMOUNT) || 25;
+  const TAKE_PROFIT_PERCENT = parseFloat(process.env.TAKE_PROFIT_PERCENT) || 0.75;
+  const STOP_LOSS_PERCENT = parseFloat(process.env.STOP_LOSS_PERCENT) || 0.25;
+  const REBUY_COOLDOWN_MS = parseInt(process.env.REBUY_COOLDOWN_MS) || 60000;
+
   const tradeAmount = Math.min(holdings.balanceUSD * RISK_PERCENT, MAX_TRADE_AMOUNT);
   const symbol = process.env.BOT_NAME || '???';
   const label = chalk.cyan(`[${symbol}]`);
@@ -31,9 +31,11 @@ function simulateTrade(signal, price, originalHoldings) {
 
     const { entryPrice, amount } = holdings.position;
     const changePercent = ((price - entryPrice) / entryPrice) * 100;
+    const totalFees = FEE_RATE * 2 * 100; // round-trip
+    const effectiveProfit = changePercent - totalFees;
 
-    if (changePercent < TAKE_PROFIT_PERCENT && changePercent > -STOP_LOSS_PERCENT) {
-      console.log(`${label} ⛔ Ignoring SELL — profit (${changePercent.toFixed(2)}%) below threshold.`);
+    if (effectiveProfit < TAKE_PROFIT_PERCENT && changePercent > -STOP_LOSS_PERCENT) {
+      console.log(`${label} ⛔ Ignoring SELL — net profit (${effectiveProfit.toFixed(2)}%) below threshold (target: ${TAKE_PROFIT_PERCENT}%).`);
       return holdings;
     }
 
@@ -44,6 +46,7 @@ function simulateTrade(signal, price, originalHoldings) {
     holdings.balanceUSD += proceeds;
     holdings.position = null;
     holdings.lastSellTime = now;
+    holdings._lastProfit = profit;
     addProfit(profit);
 
     const emoji = profit >= 0 ? '🟢' : '🔴';
@@ -93,5 +96,4 @@ function simulateTrade(signal, price, originalHoldings) {
 
   return holdings;
 }
-
 export { simulateTrade };
