@@ -1,41 +1,44 @@
 // launchBots.mjs
-import { spawn } from 'child_process';
-import fs from 'fs';
+import { execSync, spawn } from 'child_process';
 import path from 'path';
+import fs from 'fs';
 
-const pairs = ['PEPE-USDT', 'SUI-USDT', 'TURBO-USDT']; // Replace with your desired symbols
-const botCount = pairs.length;
-const delays = [0, 3000, 6000]; // Staggered start
+const BOT_FOLDER = './bots';
+const MAX_BOTS = 3;
 
-for (let i = 0; i < botCount; i++) {
-  const botDir = path.join('./bots', `bot${i + 1}`);
+// 🔪 Kill old Node bot processes
+try {
+  console.log('🛑 Killing previous bot processes...');
+  execSync(`pkill -f "node index.mjs"`);
+} catch (e) {
+  console.log('⚠️ No old bots to kill.');
+}
+
+// 🚀 Launch fresh bots
+for (let i = 1; i <= MAX_BOTS; i++) {
+  const botDir = path.join(BOT_FOLDER, `bot${i}`);
   const envPath = path.join(botDir, '.env');
 
   if (!fs.existsSync(envPath)) {
-    console.warn(`⚠️ Bot ${i + 1}: .env not found, skipping.`);
+    console.warn(`⚠️ Skipping bot${i}, no .env file found.`);
     continue;
   }
 
-  const env = Object.fromEntries(
-    fs.readFileSync(envPath, 'utf-8')
-      .split('\n')
-      .filter(Boolean)
-      .map(line => {
-        const [key, ...rest] = line.split('=');
-        return [key.trim(), rest.join('=').trim()];
-      })
-  );
+  console.log(`🚀 Launching bot ${i} → ${path.basename(botDir)}`);
+  spawn('node', ['index.mjs'], {
+    cwd: botDir,
+    env: { ...process.env, ...parseEnv(envPath) },
+    stdio: 'inherit',
+  });
+}
 
-  const delay = delays[i] || 0;
-  setTimeout(() => {
-    console.log(`🚀 Launching bot ${i + 1} → ${env.SYMBOL}`);
-    const child = spawn('node', ['index.mjs'], {
-      env: { ...process.env, ...env },
-      stdio: 'inherit',
-    });
-
-    child.on('exit', code => {
-      console.error(`❌ Bot ${env.BOT_NAME} exited with code ${code}`);
-    });
-  }, delay);
+// 🧪 Helper to parse .env manually
+function parseEnv(filePath) {
+  const lines = fs.readFileSync(filePath, 'utf-8').split('\n');
+  const env = {};
+  for (const line of lines) {
+    const [key, value] = line.split('=');
+    if (key && value) env[key.trim()] = value.trim();
+  }
+  return env;
 }

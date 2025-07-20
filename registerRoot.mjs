@@ -1,17 +1,18 @@
-// registerRoot.js
+import { createRequire } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import moduleAlias from 'module-alias';
 
-// ⛓️ Resolve __dirname in ESM
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 🧠 Register aliases
+const require = createRequire(import.meta.url);
+require('module-alias/register');
+
+// ✅ Define aliases
 moduleAlias.addAliases({
-  '@root': __dirname,
-  '@services': path.join(__dirname, 'services'),
-  '@utils': path.join(__dirname, 'utils'),
-  '@logic': path.join(__dirname, 'logic'),
-  '@config': path.join(__dirname, 'config')
+  '@services': path.resolve(__dirname, 'services'),
+  '@utils': path.resolve(__dirname, 'utils'),
+  '@config': path.resolve(__dirname, 'config'),
+  '@logic': path.resolve(__dirname, 'logic'),
 });

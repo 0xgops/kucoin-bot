@@ -1,82 +1,101 @@
+// services/trade.mjs
 import chalk from 'chalk';
 import axios from 'axios';
 import { addProfit } from '../utils/profitTracker.mjs';
+import { logResult as logTradeOutcome } from '../utils/resultLogger.mjs';
 import { FEE_RATE } from '../config/constants.mjs';
 
-function simulateTrade(signal, price, originalHoldings) {
-  const now = Date.now();
-  const holdings = { ...originalHoldings }; // Clone to avoid mutation
-  const MIN_VOLATILITY = 1.0;
+const tradeState = {}; // Keeps track of each symbol's trade status
 
-  // ✅ Safe fallback defaults if env is missing
+function simulateTrade(signal, price, holdings, symbol, rsi = null, mode = 'unknown') {
+  const now = Date.now();
+  const label = chalk.cyan(`[${symbol}]`);
+
+  // === ENV CONFIG ===
   const RISK_PERCENT = parseFloat(process.env.RISK_PERCENT) || 0.01;
   const MAX_TRADE_AMOUNT = parseFloat(process.env.MAX_TRADE_AMOUNT) || 25;
   const TAKE_PROFIT_PERCENT = parseFloat(process.env.TAKE_PROFIT_PERCENT) || 0.75;
   const STOP_LOSS_PERCENT = parseFloat(process.env.STOP_LOSS_PERCENT) || 0.25;
-  const REBUY_COOLDOWN_MS = parseInt(process.env.REBUY_COOLDOWN_MS) || 60000;
+  const REBUY_COOLDOWN_MS = parseInt(process.env.REBUY_COOLDOWN_MS || 60000);
+  const MIN_VOLATILITY = 1.0;
+
+  const state = tradeState[symbol] || {
+    inPosition: false,
+    entryPrice: 0,
+    entryTime: '',
+    amount: 0,
+    lastSellTime: 0
+  };
 
   const tradeAmount = Math.min(holdings.balanceUSD * RISK_PERCENT, MAX_TRADE_AMOUNT);
-  const symbol = process.env.BOT_NAME || '???';
-  const label = chalk.cyan(`[${symbol}]`);
 
-  console.log(`🔍 simulateTrade ENTRY for [${symbol}] | signal: ${signal}, price: $${price} | inPosition: ${!!holdings.position}`);
+  console.log(`🔍 simulateTrade ENTRY for [${symbol}] | signal: ${signal}, price: $${price} | inPosition: ${state.inPosition}`);
 
-  // --- 🧠 SELL Logic ---
+  // === SELL LOGIC ===
   if (signal === 'SELL') {
-    console.log(`🛠 simulateTrade() for [${symbol}] | signal: ${signal}, price: $${price}`);
-    if (!holdings.position) {
+    if (!state.inPosition) {
       console.log(`${label} ⚠️ SELL signal received, but no position held. Skipping.`);
       return holdings;
     }
 
-    const { entryPrice, amount } = holdings.position;
-    const changePercent = ((price - entryPrice) / entryPrice) * 100;
-    const totalFees = FEE_RATE * 2 * 100; // round-trip
+    const changePercent = ((price - state.entryPrice) / state.entryPrice) * 100;
+    const totalFees = FEE_RATE * 2 * 100;
     const effectiveProfit = changePercent - totalFees;
 
     if (effectiveProfit < TAKE_PROFIT_PERCENT && changePercent > -STOP_LOSS_PERCENT) {
-      console.log(`${label} ⛔ Ignoring SELL — net profit (${effectiveProfit.toFixed(2)}%) below threshold (target: ${TAKE_PROFIT_PERCENT}%).`);
+      console.log(`${label} ⛔ Ignoring SELL — net profit (${effectiveProfit.toFixed(2)}%) below threshold (target: ${TAKE_PROFIT_PERCENT}%)`);
       return holdings;
     }
 
-    const proceeds = amount * price * (1 - FEE_RATE);
-    const cost = amount * entryPrice;
+    const proceeds = state.amount * price * (1 - FEE_RATE);
+    const cost = state.amount * state.entryPrice;
     const profit = proceeds - cost;
 
     holdings.balanceUSD += proceeds;
-    holdings.position = null;
-    holdings.lastSellTime = now;
     holdings._lastProfit = profit;
+
+    state.inPosition = false;
+    state.lastSellTime = now;
+
     addProfit(profit);
+    logTradeOutcome({
+      symbol,
+      entryTime: state.entryTime,
+      exitTime: new Date().toISOString(),
+      entryPrice: state.entryPrice,
+      exitPrice: price,
+      pnlPercent: changePercent,
+      mode
+    });
 
     const emoji = profit >= 0 ? '🟢' : '🔴';
-    console.log(`${emoji} SELLING at $${price.toFixed(6)} | P/L: $${profit.toFixed(2)}`);
+    console.log(`${emoji} SELLING ${symbol} at $${price.toFixed(6)} | P/L: $${profit.toFixed(2)}`);
 
     const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK;
     if (DISCORD_WEBHOOK) {
-      const content = `${emoji} SELLING ${amount.toFixed(6)} units at $${price.toFixed(6)} | P/L: $${profit.toFixed(2)}`;
-      axios.post(DISCORD_WEBHOOK, { content }).catch(e => {
-        console.warn(`${label} ⚠️ Failed to send Discord alert: ${e.message}`);
+      axios.post(DISCORD_WEBHOOK, {
+        content: `${emoji} SELL ${symbol} @ $${price.toFixed(6)} | PnL: $${profit.toFixed(2)}`
+      }).catch(e => {
+        console.warn(`${label} ⚠️ Discord alert failed: ${e.message}`);
       });
     }
 
+    tradeState[symbol] = state;
     return holdings;
   }
 
-  // --- 💸 BUY Logic ---
-  if (signal === 'BUY' && !holdings.position) {
+  // === BUY LOGIC ===
+  if (signal === 'BUY' && !state.inPosition) {
     const volatility = holdings.volatility || 0;
 
     if (volatility < MIN_VOLATILITY) {
-      console.log(`${label} 🧊 Skipping BUY — too calm (volatility = ${volatility.toFixed(2)}%)`);
-      holdings._skipReason = 'CALM';
+      console.log(`${label} 🧊 Skipping BUY — too calm (vol = ${volatility.toFixed(2)}%)`);
       return holdings;
     }
 
-    if (holdings.lastSellTime && now - holdings.lastSellTime < REBUY_COOLDOWN_MS) {
-      const secondsLeft = ((REBUY_COOLDOWN_MS - (now - holdings.lastSellTime)) / 1000).toFixed(1);
+    if (state.lastSellTime && now - state.lastSellTime < REBUY_COOLDOWN_MS) {
+      const secondsLeft = ((REBUY_COOLDOWN_MS - (now - state.lastSellTime)) / 1000).toFixed(1);
       console.log(`${label} ⏳ Skipping BUY — cooldown (${secondsLeft}s left)`);
-      holdings._skipReason = 'COOLDOWN';
       return holdings;
     }
 
@@ -84,16 +103,19 @@ function simulateTrade(signal, price, originalHoldings) {
     const feePaid = (tradeAmount / price) * FEE_RATE;
 
     holdings.balanceUSD -= tradeAmount;
-    holdings.position = {
-      entryPrice: price,
-      amount: quantity,
-      highestPrice: price
-    };
+
+    state.inPosition = true;
+    state.entryPrice = price;
+    state.entryTime = new Date().toISOString();
+    state.amount = quantity;
 
     console.log(`💸 KuCoin fee on BUY: ${feePaid.toFixed(6)} units`);
-    console.log(`${label} 🟢 BUYING at $${price.toFixed(6)} | Holding ${quantity.toFixed(6)} units...`);
+    console.log(`${label} 🟢 BUYING ${symbol} @ $${price.toFixed(6)} | Qty: ${quantity.toFixed(6)}`);
+
+    tradeState[symbol] = state;
   }
 
   return holdings;
 }
-export { simulateTrade };
+
+export { simulateTrade as executeTrade };

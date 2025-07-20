@@ -1,3 +1,4 @@
+// index.mjs
 import 'dotenv/config';
 import chalk from 'chalk';
 import fs from 'fs/promises';
@@ -108,7 +109,14 @@ async function main() {
 
     if (['BUY', 'SELL'].includes(signal)) {
       console.log(`🔍 Pre-trade: ${holdings.position && holdings.position.entryPrice ? 'IN TRADE' : 'OUT'}`);
-      holdings = simulateTrade(signal, price, holdings);
+      holdings = simulateTrade(
+        signal,
+        price,
+        holdings,
+        SYMBOL,
+        rsi,
+        process.env.TRADE_MODE || 'unknown'
+      );
       await saveHoldings();
       await logTrade(signal, price, rsi);
     }

@@ -16,3 +16,4 @@ export async function fetchPrice(symbol = 'BTC-USDT') {
     return null;
   }
 }
+export { fetchPrice as getCurrentPrice };
