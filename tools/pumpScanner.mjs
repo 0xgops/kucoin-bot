@@ -1,6 +1,3 @@
-// tools/pumpScanner.mjs
-
-import fs from 'fs';
 import axios from 'axios';
 import chalk from 'chalk';
 import { idMap } from '../config/idMap-kucoin-expanded.mjs';
@@ -21,16 +18,22 @@ const fetchCandles = async (symbol) => {
   const url = `https://api.kucoin.com/api/v1/market/candles?type=${CANDLE_INTERVAL}&symbol=${symbol}`;
   try {
     const { data } = await axios.get(url);
-    return data?.data?.slice(0, LOOKBACK).reverse(); // newest last
-  } catch (e) {
-    console.warn(`❌ Failed to fetch candles for ${symbol}: ${e.message}`);
+    if (!Array.isArray(data?.data) || data.data.length < LOOKBACK) {
+      console.warn(`⚠️ ${symbol}: Insufficient or invalid candle data`);
+      return null;
+    }
+    return data.data.slice(0, LOOKBACK).reverse(); // newest last
+  } catch (err) {
+    console.warn(`❌ Failed to fetch candles for ${symbol}: ${err.message}`);
     return null;
   }
 };
 
 const calcSMA = (closes, length) => {
   if (closes.length < length) return 0;
-  return closes.slice(0, length).reduce((a, b) => a + b, 0) / length;
+  const slice = closes.slice(0, length);
+  const sum = slice.reduce((a, b) => a + b, 0);
+  return sum / length;
 };
 
 const calcRSI = (closes, period = 14) => {
@@ -47,16 +50,16 @@ const calcRSI = (closes, period = 14) => {
 
 const analyzeCoin = async (symbol) => {
   const candles = await fetchCandles(symbol);
-  if (!candles || candles.length < LOOKBACK) return null;
+  if (!candles) return null;
 
   const closes = candles.map(c => parseFloat(c[2]));
   const opens = candles.map(c => parseFloat(c[1]));
   const volumes = candles.map(c => parseFloat(c[5]));
 
-  const greenCandles = candles.filter((c) => parseFloat(c[2]) > parseFloat(c[1])).length;
+  const greenCandles = candles.filter(c => parseFloat(c[2]) > parseFloat(c[1])).length;
   const smaShort = calcSMA(closes, THRESHOLDS.smaShort);
   const smaLong = calcSMA(closes, THRESHOLDS.smaLong);
-  const rsi = calcRSI(closes, THRESHOLDS.rsiMin);
+  const rsi = calcRSI(closes, 14);
   const avgVolume = volumes.slice(1).reduce((a, b) => a + b, 0) / (volumes.length - 1);
   const volSpike = volumes[0] > avgVolume * THRESHOLDS.volSpikeMultiplier;
 
@@ -66,7 +69,7 @@ const analyzeCoin = async (symbol) => {
     greenCandles,
     smaTrend: smaShort > smaLong,
     rsi,
-    rsiRising: rsi && rsi > THRESHOLDS.rsiMin,
+    rsiRising: rsi !== null && rsi > THRESHOLDS.rsiMin,
     volSpike,
     score: 0,
   };
@@ -94,12 +97,17 @@ const runScan = async () => {
   results.sort((a, b) => b.score - a.score);
 
   console.log('\n🚀 Pump Scanner Results:\n');
+  if (results.length === 0) {
+    console.log(chalk.gray('No strong momentum setups found.'));
+    return;
+  }
+
   results.forEach((r, i) => {
     console.log(
       `${i + 1}. ${chalk.cyan(r.symbol)} | ` +
       `Score: ${chalk.yellow(`${r.score}/4`)} | ` +
-      `Price: $${chalk.green(r.price)} | ` +
-      `RSI: ${chalk.magenta(r.rsi.toFixed(2))}`
+      `Price: $${chalk.green(r.price.toFixed(4))} | ` +
+      `RSI: ${chalk.magenta(r.rsi?.toFixed(2) || 'N/A')}`
     );
   });
 };

@@ -1,5 +1,3 @@
-// services/beachScanner.mjs
-
 import axios from 'axios';
 import chalk from 'chalk';
 import { idMap } from '../config/idMap-kucoin-expanded.mjs';
@@ -16,8 +14,15 @@ const THRESHOLDS = {
 async function fetchCandles(symbol) {
   const end = Math.floor(Date.now() / 1000);
   const url = `https://api.kucoin.com/api/v1/market/candles?type=1min&symbol=${symbol}&endAt=${end}`;
+
   try {
     const { data } = await axios.get(url);
+
+    if (!Array.isArray(data?.data) || data.data.length < CANDLES) {
+      console.warn(`⚠️ ${symbol}: Insufficient or invalid candle data`);
+      return [];
+    }
+
     return data.data.slice(0, CANDLES); // newest first
   } catch (err) {
     console.warn(`❌ Failed to fetch candles for ${symbol}: ${err.message}`);
@@ -26,7 +31,7 @@ async function fetchCandles(symbol) {
 }
 
 function confirmGreenBreakout(candles) {
-  const recent = candles.slice(0, 3); // most recent 3
+  const recent = candles.slice(0, 3);
   const green = recent.filter(c => parseFloat(c[2]) > parseFloat(c[1]));
 
   const avgVol = candles
@@ -40,39 +45,48 @@ function confirmGreenBreakout(candles) {
 }
 
 function detectBeachBreakout(candles, symbol) {
-  const reds = candles.slice(1, 6).filter(c => parseFloat(c[2]) < parseFloat(c[1]));
-  if (reds.length < 2) return false;
+  try {
+    const reds = candles.slice(1, 6).filter(c => parseFloat(c[2]) < parseFloat(c[1]));
+    if (reds.length < 2) return false;
 
-  const avgRedBody =
-    reds.map(c => Math.abs(c[2] - c[1])).reduce((a, b) => a + b, 0) / reds.length;
+    const avgRedBody = reds
+      .map(c => Math.abs(parseFloat(c[2]) - parseFloat(c[1])))
+      .reduce((a, b) => a + b, 0) / reds.length;
 
-  const [time, open, close, high, low, volume] = candles[0].map(Number);
-  const body = Math.abs(close - open);
+    const [_, open, close, high, low, volume] = candles[0].map(Number);
+    const body = Math.abs(close - open);
+    const expansionFactor = body / (avgRedBody || 1);
 
-  const expansionFactor = body / avgRedBody;
-  const volumeAvg =
-    candles.slice(1, 6).reduce((sum, c) => sum + Number(c[5]), 0) / 5;
-  const volX = volume / volumeAvg;
+    const volumeAvg = candles
+      .slice(1, 6)
+      .reduce((sum, c) => sum + parseFloat(c[5]), 0) / 5;
 
-  const passed =
-    close > open &&
-    expansionFactor > THRESHOLDS.ef &&
-    volX > THRESHOLDS.volX &&
-    confirmGreenBreakout(candles);
+    const volX = volume / (volumeAvg || 1);
 
-  if (THRESHOLDS.debug) {
-    const status = passed ? chalk.green('✅') : chalk.red('❌');
-    console.log(
-      `${chalk.cyan(symbol)} | Pullback: ${reds.length} red | EF: ${expansionFactor.toFixed(2)} | ` +
-      `Vol x: ${volX.toFixed(2)} | Thresholds: EF>${THRESHOLDS.ef}, VOL>${THRESHOLDS.volX} ${status}`
-    );
+    const passed =
+      close > open &&
+      expansionFactor > THRESHOLDS.ef &&
+      volX > THRESHOLDS.volX &&
+      confirmGreenBreakout(candles);
+
+    if (THRESHOLDS.debug) {
+      const status = passed ? chalk.green('✅') : chalk.red('❌');
+      console.log(
+        `${chalk.cyan(symbol)} | Pullback: ${reds.length} red | EF: ${expansionFactor.toFixed(2)} | ` +
+        `Vol x: ${volX.toFixed(2)} | Thresholds: EF>${THRESHOLDS.ef}, VOL>${THRESHOLDS.volX} ${status}`
+      );
+    }
+
+    return passed;
+  } catch (err) {
+    console.warn(`❌ Error analyzing ${symbol}: ${err.message}`);
+    return false;
   }
-
-  return passed;
 }
 
 async function scan() {
   console.log(`\n🌊 ${chalk.bold('BEACH SCANNER')} — Looking for pullback → breakout setups\n`);
+
   for (const symbol of symbols) {
     const candles = await fetchCandles(symbol);
     if (candles.length < 6) continue;

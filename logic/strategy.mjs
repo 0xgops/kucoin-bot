@@ -129,3 +129,6 @@ export function evaluateStrategy(price) {
 export function getLatestRSI() {
   return getRSI();
 }
+export function resetHistory() {
+  prices.length = 0;
+}

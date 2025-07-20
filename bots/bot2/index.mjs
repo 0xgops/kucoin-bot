@@ -3,13 +3,15 @@ import '../../registerRoot.mjs';
 import 'dotenv/config';
 import { simulateTrade } from '../../services/tradeHandler.mjs';
 import { getCurrentPrice } from '../../services/kucoin.mjs';
-import { evaluateStrategy } from '../../logic/strategy.mjs'; // or strategy-rsi.mjs
+import { evaluateStrategy, resetHistory } from '../../logic/strategy.mjs';
 import { addProfit, getProfit } from '../../utils/profitTracker.mjs';
 import { isVolatileEnough } from '../../utils/volatilityFilter.mjs';
 import { fetchLastHourPrices } from '../../services/priceHistory.mjs';
 
 const SYMBOL = process.env.SYMBOL;
 const INTERVAL = parseInt(process.env.CHECK_INTERVAL || '30000');
+
+resetHistory(); // 🧹 Clear old memory (important after rotation)
 
 let seeded = false;
 let lastVolatility = 0;
@@ -18,9 +20,10 @@ async function tick() {
   try {
     const price = await getCurrentPrice(SYMBOL);
 
+    // 🌱 Seed with historical data for accurate indicators
     if (!seeded) {
       const history = await fetchLastHourPrices(SYMBOL);
-      history.forEach(p => isVolatileEnough(p)); // warm up
+      history.forEach(p => evaluateStrategy(p)); // pre-warm indicators
       seeded = true;
     }
 
@@ -29,7 +32,7 @@ async function tick() {
 
     if (process.env.SKIP_VOLATILITY !== 'true') {
       volatile = isVolatileEnough(price);
-      lastVolatility = isVolatileEnough(price, true); // % only
+      lastVolatility = isVolatileEnough(price, true); // percentage only
       if (!volatile) {
         skipReason = 'CALM';
         console.log(`[${SYMBOL}] ⏸ Not volatile enough`);
@@ -41,7 +44,7 @@ async function tick() {
     const signal = evaluateStrategy(price, SYMBOL);
     await simulateTrade({ symbol: SYMBOL, signal, price, rsi: null, mode: 'live' });
 
-    // 💰 Summary line (always show, even if volatile filter skips)
+    // 📈 Summary Output
     const profit = getProfit();
     console.log(
       `💰 Total Profit: $${profit.toFixed(2)} | Volatility: ${lastVolatility.toFixed(2)}% | Skip: ${skipReason}`
