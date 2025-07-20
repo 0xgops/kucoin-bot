@@ -3,16 +3,21 @@ import path from 'path';
 
 const BOT_NAME = process.env.BOT_NAME || 'default';
 const filePath = path.join('logs', `daily-loss-${BOT_NAME}.json`);
-const MAX_DAILY_LOSS = parseFloat(process.env.MAX_DAILY_LOSS_PERCENT || '5');
+const MAX_DAILY_LOSS = parseFloat(process.env.MAX_DAILY_LOSS_PERCENT || '5'); // % loss cap
 
 function getTodayKey() {
-  return new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  return new Date().toISOString().split('T')[0]; // 'YYYY-MM-DD'
 }
 
 function loadLossFile() {
   if (!fs.existsSync(filePath)) return {};
-  const raw = fs.readFileSync(filePath, 'utf-8');
-  return JSON.parse(raw || '{}');
+  try {
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    return JSON.parse(raw || '{}');
+  } catch (e) {
+    console.warn('⚠️ Failed to load daily loss file:', e.message);
+    return {};
+  }
 }
 
 function saveLossFile(data) {
@@ -20,19 +25,26 @@ function saveLossFile(data) {
 }
 
 export function recordLoss(pnlPercent) {
-  const allData = loadLossFile();
+  if (pnlPercent >= 0) return; // Only record losses
+
+  const data = loadLossFile();
   const today = getTodayKey();
 
-  if (!allData[today]) allData[today] = 0;
-  allData[today] += pnlPercent;
+  if (!data[today]) data[today] = 0;
+  data[today] += pnlPercent; // subtracts negative PnL
 
-  saveLossFile(allData);
+  saveLossFile(data);
 }
 
 export function checkDailyLossExceeded() {
-  const allData = loadLossFile();
+  const data = loadLossFile();
   const today = getTodayKey();
+  const totalLoss = data[today] || 0;
 
-  const todayLoss = allData[today] || 0;
-  return todayLoss <= -MAX_DAILY_LOSS;
+  const exceeded = Math.abs(totalLoss) >= MAX_DAILY_LOSS;
+  if (exceeded) {
+    console.log(`🚫 Max daily loss hit for ${BOT_NAME}: ${totalLoss.toFixed(2)}%`);
+  }
+
+  return exceeded;
 }

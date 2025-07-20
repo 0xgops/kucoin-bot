@@ -1,13 +1,26 @@
+// services/tradeHandler.mjs
+import fs from 'fs';
+import path from 'path';
+import chalk from 'chalk';
+import { logResult as logTradeOutcome } from '../utils/resultLogger.mjs';
+import { sendDiscordMessage } from './discord.mjs';
+import { addProfit } from '../utils/profitTracker.mjs';
+import { recordTradeResult, getStats } from '../utils/winLossTracker.mjs';
+import { checkDailyLossExceeded, recordLoss } from '../utils/dailyLossManager.mjs';
+
+const stateMap = {};
+const MIN_PNL_THRESHOLD = parseFloat(process.env.MIN_PNL_THRESHOLD || '0.5');
+const TRAIL_PERCENT = parseFloat(process.env.TRAIL_PERCENT || '4');
+const COOLDOWN_MINUTES = parseInt(process.env.COOLDOWN_MINUTES || '10');
+const COOLDOWN_MS = COOLDOWN_MINUTES * 60 * 1000;
+
 export async function simulateTrade({ symbol, signal, price, rsi = null, mode = 'unknown' }) {
   if (checkDailyLossExceeded()) {
     console.log(`⛔ Bot halted — daily loss exceeded for ${symbol}`);
     return;
   }
 
-  const cooldownMinutes = parseInt(process.env.COOLDOWN_MINUTES || '10');
-  const cooldownMs = cooldownMinutes * 60 * 1000;
   const now = Date.now();
-
   const state = stateMap[symbol] || {
     inPosition: false,
     entryPrice: 0,
@@ -16,9 +29,9 @@ export async function simulateTrade({ symbol, signal, price, rsi = null, mode = 
     lastLossTime: null
   };
 
-  // ⏱️ Skip trade if cooling down
-  if (state.lastLossTime && now - state.lastLossTime < cooldownMs) {
-    const minutesLeft = ((cooldownMs - (now - state.lastLossTime)) / 60000).toFixed(1);
+  // ⏱️ Cooldown logic
+  if (state.lastLossTime && now - state.lastLossTime < COOLDOWN_MS) {
+    const minutesLeft = ((COOLDOWN_MS - (now - state.lastLossTime)) / 60000).toFixed(1);
     console.log(`🕒 Cooldown active for ${symbol} — ${minutesLeft} min left`);
     return;
   }
@@ -66,7 +79,12 @@ export async function simulateTrade({ symbol, signal, price, rsi = null, mode = 
       addProfit(pnl);
       const result = pnl > 0 ? 'win' : 'loss';
       recordTradeResult({ symbol, result, pnl });
-      recordLoss(pnl);
+
+      if (pnl < 0) {
+        recordLoss(pnl);
+        state.lastLossTime = now;
+        console.log(`🧊 Cooldown started for ${symbol} after loss`);
+      }
 
       const stats = getStats(symbol);
       const emoji = result === 'win' ? '✅' : '❌';
@@ -74,11 +92,7 @@ export async function simulateTrade({ symbol, signal, price, rsi = null, mode = 
 
       await sendDiscordMessage(summary);
 
-      if (pnl < 0) {
-        state.lastLossTime = now;
-        console.log(`🧊 Cooldown started for ${symbol} after loss`);
-      }
-
+      // Reset state
       state.inPosition = false;
       state.entryPrice = 0;
       state.entryTime = '';
